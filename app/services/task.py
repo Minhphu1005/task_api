@@ -1,6 +1,12 @@
-from fastapi import HTTPException, status
+from fastapi import BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.cache import (
+    cache_service,
+    invalidate_project_tasks_cache,
+    project_tasks_cache_key,
+)
+from app.core.exceptions import BadRequestError, ConflictError, ForbiddenError, NotFoundError
 from app.core.permissions import (
     ALL_WORKSPACE_ROLES,
     EDITOR_OR_OWNER,
@@ -11,6 +17,7 @@ from app.models.enums import ProjectStatus, TaskPriority, TaskStatus, UserRole, 
 from app.models.task import Comment, Label, Task
 from app.models.user import User
 from app.repositories.task import CommentRepository, LabelRepository, TaskRepository
+from app.repositories.user import UserRepository
 from app.repositories.workspace import WorkspaceRepository
 from app.schemas.task import (
     CommentCreate,
@@ -22,6 +29,7 @@ from app.schemas.task import (
     TaskResponse,
     TaskUpdate,
 )
+from app.services.notification import send_task_assigned_email
 
 
 def serialize_task(task: Task, *, include_labels: bool = True) -> TaskResponse:
@@ -43,42 +51,39 @@ def serialize_task(task: Task, *, include_labels: bool = True) -> TaskResponse:
 
 
 class TaskService:
-    """Business logic for tasks inside projects."""
+    """Business logic for tasks inside projects with Redis caching and notifications."""
 
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
         self.tasks = TaskRepository(session)
         self.labels = LabelRepository(session)
         self.workspaces = WorkspaceRepository(session)
+        self.users = UserRepository(session)
 
-    async def _validate_assignee(self, workspace_id: int, assignee_id: int | None) -> None:
-        """Ensure the assignee belongs to the workspace."""
+    async def _validate_assignee(self, workspace_id: int, assignee_id: int | None) -> User | None:
+        """Ensure the assignee belongs to the workspace and return the User."""
         if assignee_id is None:
-            return
+            return None
         member = await self.workspaces.get_member(workspace_id, assignee_id)
         if member is None:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Assignee must be a member of the workspace",
-            )
+            raise BadRequestError("Assignee must be a member of the workspace")
+        return await self.users.get_by_id(assignee_id)
 
     async def create_task(
         self,
         project_id: int,
         current_user: User,
         payload: TaskCreate,
+        background_tasks: BackgroundTasks | None = None,
     ) -> TaskResponse:
-        """Create a new task in an active project."""
+        """Create a new task in an active project, invalidate cache, and notify assignee."""
         project = await ensure_project_role(
             self.session, project_id, current_user, EDITOR_OR_OWNER
         )
         if project.status == ProjectStatus.ARCHIVED:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Cannot create tasks in an archived project",
-            )
+            raise BadRequestError("Cannot create tasks in an archived project")
 
-        await self._validate_assignee(project.workspace_id, payload.assignee_id)
+        assignee = await self._validate_assignee(project.workspace_id, payload.assignee_id)
 
         task = await self.tasks.create(
             project_id=project_id,
@@ -91,6 +96,18 @@ class TaskService:
             created_by=current_user.id,
         )
         await self.session.commit()
+        await invalidate_project_tasks_cache(project_id)
+
+        if assignee is not None and background_tasks is not None:
+            background_tasks.add_task(
+                send_task_assigned_email,
+                recipient_email=assignee.email,
+                recipient_name=assignee.full_name,
+                task_title=task.title,
+                project_id=project_id,
+                assigned_by=current_user.full_name,
+            )
+
         return serialize_task(task, include_labels=False)
 
     async def list_project_tasks(
@@ -105,8 +122,22 @@ class TaskService:
         page: int = 1,
         limit: int = 20,
     ) -> PaginatedTaskResponse:
-        """List tasks in a project with filtering and pagination."""
+        """List tasks in a project with filtering, pagination, and Redis caching."""
         await ensure_project_role(self.session, project_id, current_user, ALL_WORKSPACE_ROLES)
+
+        cache_key = project_tasks_cache_key(
+            project_id,
+            status=task_status.value if task_status else None,
+            priority=priority.value if priority else None,
+            assignee_id=assignee_id,
+            search=search,
+            page=page,
+            limit=limit,
+        )
+        cached = await cache_service.get_json(cache_key)
+        if cached is not None:
+            return PaginatedTaskResponse.model_validate(cached)
+
         result = await self.tasks.list_by_project(
             project_id,
             status=task_status,
@@ -116,19 +147,21 @@ class TaskService:
             page=page,
             limit=limit,
         )
-        return PaginatedTaskResponse(
+        response = PaginatedTaskResponse(
             items=[serialize_task(item) for item in result.items],
             total=result.total,
             page=result.page,
             limit=result.limit,
             total_pages=result.total_pages,
         )
+        await cache_service.set_json(cache_key, response.model_dump(mode="json"))
+        return response
 
     async def get_task(self, task_id: int, current_user: User) -> TaskResponse:
         """Fetch a single task by ID."""
         task = await self.tasks.get_with_details(task_id)
         if task is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+            raise NotFoundError("Task not found")
         await ensure_workspace_role(
             self.session, task.project.workspace_id, current_user, ALL_WORKSPACE_ROLES
         )
@@ -139,40 +172,61 @@ class TaskService:
         task_id: int,
         current_user: User,
         payload: TaskUpdate,
+        background_tasks: BackgroundTasks | None = None,
     ) -> TaskResponse:
-        """Partially update a task."""
+        """Partially update a task, invalidate cache, and notify if reassigned."""
         task = await self.tasks.get_with_details(task_id)
         if task is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+            raise NotFoundError("Task not found")
         await ensure_workspace_role(
             self.session, task.project.workspace_id, current_user, EDITOR_OR_OWNER
         )
 
+        previous_assignee_id = task.assignee_id
         updates = payload.model_dump(exclude_unset=True)
+        new_assignee: User | None = None
         if "assignee_id" in updates:
-            await self._validate_assignee(task.project.workspace_id, updates["assignee_id"])
+            new_assignee = await self._validate_assignee(
+                task.project.workspace_id, updates["assignee_id"]
+            )
         if "title" in updates and updates["title"] is not None:
             updates["title"] = updates["title"].strip()
 
         if updates:
             await self.tasks.update(task, **updates)
             await self.session.commit()
+            await invalidate_project_tasks_cache(task.project_id)
+
+            if (
+                new_assignee is not None
+                and new_assignee.id != previous_assignee_id
+                and background_tasks is not None
+            ):
+                background_tasks.add_task(
+                    send_task_assigned_email,
+                    recipient_email=new_assignee.email,
+                    recipient_name=new_assignee.full_name,
+                    task_title=task.title,
+                    project_id=task.project_id,
+                    assigned_by=current_user.full_name,
+                )
 
         refreshed = await self.tasks.get_with_details(task_id)
         assert refreshed is not None
         return serialize_task(refreshed)
 
     async def delete_task(self, task_id: int, current_user: User) -> int:
-        """Delete a task and return its project_id."""
+        """Delete a task and invalidate project task cache."""
         task = await self.tasks.get_with_details(task_id)
         if task is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+            raise NotFoundError("Task not found")
         await ensure_workspace_role(
             self.session, task.project.workspace_id, current_user, EDITOR_OR_OWNER
         )
         project_id = task.project_id
         await self.tasks.delete(task)
         await self.session.commit()
+        await invalidate_project_tasks_cache(project_id)
         return project_id
 
     async def attach_label(
@@ -181,25 +235,23 @@ class TaskService:
         label_id: int,
         current_user: User,
     ) -> TaskResponse:
-        """Attach a project label to a task."""
+        """Attach a project label to a task and invalidate cache."""
         task = await self.tasks.get_with_details(task_id)
         if task is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+            raise NotFoundError("Task not found")
         await ensure_workspace_role(
             self.session, task.project.workspace_id, current_user, EDITOR_OR_OWNER
         )
 
         label = await self.labels.get_by_id(label_id)
         if label is None or label.project_id != task.project_id:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Label not found in this project",
-            )
+            raise NotFoundError("Label not found in this project")
 
         existing = await self.tasks.get_task_label(task_id, label_id)
         if existing is None:
             await self.tasks.attach_label(task_id, label_id)
             await self.session.commit()
+            await invalidate_project_tasks_cache(task.project_id)
 
         self.session.expire(task, ["labels"])
         refreshed = await self.tasks.get_with_details(task_id)
@@ -212,23 +264,21 @@ class TaskService:
         label_id: int,
         current_user: User,
     ) -> TaskResponse:
-        """Detach a label from a task."""
+        """Detach a label from a task and invalidate cache."""
         task = await self.tasks.get_with_details(task_id)
         if task is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+            raise NotFoundError("Task not found")
         await ensure_workspace_role(
             self.session, task.project.workspace_id, current_user, EDITOR_OR_OWNER
         )
 
         existing = await self.tasks.get_task_label(task_id, label_id)
         if existing is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Label is not attached to this task",
-            )
+            raise NotFoundError("Label is not attached to this task")
 
         await self.tasks.detach_label(existing)
         await self.session.commit()
+        await invalidate_project_tasks_cache(task.project_id)
         self.session.expire(task, ["labels"])
         refreshed = await self.tasks.get_with_details(task_id)
         assert refreshed is not None
@@ -253,10 +303,7 @@ class LabelService:
         name = payload.name.strip()
         existing = await self.labels.get_by_project_and_name(project_id, name)
         if existing is not None:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Label with this name already exists in the project",
-            )
+            raise ConflictError("Label with this name already exists in the project")
         label = await self.labels.create(
             project_id=project_id,
             name=name,
@@ -276,10 +323,10 @@ class LabelService:
         current_user: User,
         payload: LabelUpdate,
     ) -> Label:
-        """Update a label's name or color."""
+        """Update a label's name or color and invalidate project task cache."""
         label = await self.labels.get_by_id(label_id)
         if label is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Label not found")
+            raise NotFoundError("Label not found")
         await ensure_project_role(self.session, label.project_id, current_user, EDITOR_OR_OWNER)
 
         updates = payload.model_dump(exclude_unset=True)
@@ -287,25 +334,24 @@ class LabelService:
             updates["name"] = updates["name"].strip()
             existing = await self.labels.get_by_project_and_name(label.project_id, updates["name"])
             if existing is not None and existing.id != label.id:
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail="Label with this name already exists in the project",
-                )
+                raise ConflictError("Label with this name already exists in the project")
         if not updates:
             return label
         updated = await self.labels.update(label, **updates)
         await self.session.commit()
+        await invalidate_project_tasks_cache(label.project_id)
         return updated
 
     async def delete_label(self, label_id: int, current_user: User) -> int:
-        """Delete a label and return its project_id."""
+        """Delete a label and invalidate project task cache."""
         label = await self.labels.get_by_id(label_id)
         if label is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Label not found")
+            raise NotFoundError("Label not found")
         await ensure_project_role(self.session, label.project_id, current_user, EDITOR_OR_OWNER)
         project_id = label.project_id
         await self.labels.delete(label)
         await self.session.commit()
+        await invalidate_project_tasks_cache(project_id)
         return project_id
 
 
@@ -327,7 +373,7 @@ class CommentService:
         """Add a comment to a task (any workspace member)."""
         task = await self.tasks.get_with_details(task_id)
         if task is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+            raise NotFoundError("Task not found")
         await ensure_workspace_role(
             self.session, task.project.workspace_id, current_user, ALL_WORKSPACE_ROLES
         )
@@ -343,7 +389,7 @@ class CommentService:
         """List comments on a task."""
         task = await self.tasks.get_with_details(task_id)
         if task is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+            raise NotFoundError("Task not found")
         await ensure_workspace_role(
             self.session, task.project.workspace_id, current_user, ALL_WORKSPACE_ROLES
         )
@@ -353,15 +399,14 @@ class CommentService:
         """Delete a comment (author, workspace OWNER, or global ADMIN)."""
         comment = await self.comments.get_with_task(comment_id)
         if comment is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found")
+            raise NotFoundError("Comment not found")
 
         workspace_id = comment.task.project.workspace_id
         if current_user.role != UserRole.ADMIN and comment.author_id != current_user.id:
             member = await self.workspaces.get_member(workspace_id, current_user.id)
             if member is None or member.role != WorkspaceRole.OWNER:
-                raise HTTPException(
-                    status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Only the comment author, workspace owner, or admin can delete it",
+                raise ForbiddenError(
+                    "Only the comment author, workspace owner, or admin can delete it"
                 )
 
         await self.comments.delete(comment)

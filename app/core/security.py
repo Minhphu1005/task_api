@@ -5,6 +5,7 @@ from uuid import uuid4
 import bcrypt
 import jwt
 
+from app.core.cache import cache_service
 from app.core.config import get_settings
 
 
@@ -75,29 +76,17 @@ def decode_token(token: str, *, expected_type: str | None = None) -> dict[str, A
 
 
 class TokenBlacklist:
-    """Stores revoked refresh token JTIs until expiry."""
+    """Stores revoked refresh token JTIs in Redis (with in-memory fallback)."""
 
-    def __init__(self) -> None:
-        self._revoked: dict[str, float] = {}
+    PREFIX = "revoked_token:"
 
     async def revoke(self, jti: str, ttl_seconds: int) -> None:
-        """Mark a token JTI as revoked for the remaining TTL."""
-        expires_at = datetime.now(UTC).timestamp() + max(ttl_seconds, 1)
-        self._revoked[jti] = expires_at
+        """Mark a token JTI as revoked for its remaining lifetime."""
+        await cache_service.set_flag(f"{self.PREFIX}{jti}", ttl_seconds=max(ttl_seconds, 1))
 
     async def is_revoked(self, jti: str) -> bool:
-        """Return True if the token JTI has been revoked and not yet expired."""
-        exp = self._revoked.get(jti)
-        if exp is None:
-            return False
-        if datetime.now(UTC).timestamp() >= exp:
-            self._revoked.pop(jti, None)
-            return False
-        return True
-
-    def clear(self) -> None:
-        """Clear all revoked tokens (useful in tests)."""
-        self._revoked.clear()
+        """Return True if the token JTI has been revoked."""
+        return await cache_service.exists(f"{self.PREFIX}{jti}")
 
 
 token_blacklist = TokenBlacklist()
