@@ -23,6 +23,12 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://taskhub:taskhub@localhost:5432/taskhub"
     db_echo: bool = False
 
+    # Security & JWT
+    secret_key: str = "dev-insecure-secret-key-change-me-before-production"
+    jwt_algorithm: str = "HS256"
+    access_token_expire_minutes: int = 30
+    refresh_token_expire_days: int = 7
+
 
 @lru_cache
 def get_settings() -> Settings:
