@@ -1,0 +1,55 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: taskhub-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-taskhub}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-taskhub}
+      POSTGRES_DB: ${POSTGRES_DB:-taskhub}
+    ports:
+      - "5432:5432"
+    volumes:
+      - taskhub_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-taskhub} -d ${POSTGRES_DB:-taskhub}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: taskhub-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - taskhub_redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: taskhub-api
+    environment:
+      APP_NAME: ${APP_NAME:-TaskHub API}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      DEBUG: ${DEBUG:-false}
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-taskhub}:${POSTGRES_PASSWORD:-taskhub}@db:5432/${POSTGRES_DB:-taskhub}
+      REDIS_URL: redis://redis:6379/0
+      SECRET_KEY: ${SECRET_KEY:-taskhub-docker-compose-secret-key-please-override-32chars}
+      CACHE_TTL_SECONDS: ${CACHE_TTL_SECONDS:-60}
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  taskhub_pgdata:
+  taskhub_redisdata:
