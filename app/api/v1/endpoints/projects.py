@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
@@ -93,7 +93,7 @@ async def list_project_tasks(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> PaginatedTaskResponse:
-    """List tasks in a project with filtering and pagination."""
+    """List tasks in a project with filtering, pagination, and Redis caching."""
     service = TaskService(session)
     return await service.list_project_tasks(
         project_id,
@@ -117,12 +117,18 @@ async def list_project_tasks(
 async def create_project_task(
     project_id: int,
     payload: TaskCreate,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> TaskResponse:
     """Create a new task inside a project (owner or editor)."""
     service = TaskService(session)
-    return await service.create_task(project_id, current_user, payload)
+    return await service.create_task(
+        project_id,
+        current_user,
+        payload,
+        background_tasks=background_tasks,
+    )
 
 
 @router.post(

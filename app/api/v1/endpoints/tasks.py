@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_user
@@ -25,12 +25,18 @@ async def get_task(
 async def update_task(
     task_id: int,
     payload: TaskUpdate,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> TaskResponse:
     """Partially update a task (owner or editor)."""
     service = TaskService(session)
-    return await service.update_task(task_id, current_user, payload)
+    return await service.update_task(
+        task_id,
+        current_user,
+        payload,
+        background_tasks=background_tasks,
+    )
 
 
 @router.delete(
