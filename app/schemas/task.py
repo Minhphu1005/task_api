@@ -1,25 +1,8 @@
 from datetime import datetime
-from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, Field
 
-
-class TaskStatus(StrEnum):
-    """Workflow status of a task."""
-
-    TODO = "TODO"
-    IN_PROGRESS = "IN_PROGRESS"
-    IN_REVIEW = "IN_REVIEW"
-    DONE = "DONE"
-
-
-class TaskPriority(StrEnum):
-    """Priority level of a task."""
-
-    LOW = "LOW"
-    MEDIUM = "MEDIUM"
-    HIGH = "HIGH"
-    URGENT = "URGENT"
+from app.models.enums import TaskPriority, TaskStatus
 
 
 class TaskCreate(BaseModel):

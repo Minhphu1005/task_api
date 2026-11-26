@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     debug: bool = True
     api_v1_prefix: str = "/api/v1"
 
+    # Database
+    database_url: str = "postgresql+asyncpg://taskhub:taskhub@localhost:5432/taskhub"
+    db_echo: bool = False
+
 
 @lru_cache
 def get_settings() -> Settings:
