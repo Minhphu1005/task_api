@@ -15,8 +15,6 @@ if TYPE_CHECKING:
 
 
 class User(Base):
-    """Application user account."""
-
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)

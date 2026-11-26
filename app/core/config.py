@@ -8,8 +8,6 @@ DEFAULT_INSECURE_SECRET = "dev-insecure-secret-key-change-me-before-production"
 
 
 class Settings(BaseSettings):
-    """Application settings with fail-fast validation across environments."""
-
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -52,7 +50,6 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_environment_security(self) -> "Settings":
-        """Fail fast if production/staging uses insecure defaults."""
         if not self.database_url.strip():
             raise ValueError("DATABASE_URL must not be empty")
         if self.environment in {"production", "staging"}:
@@ -67,5 +64,4 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    """Return cached settings instance."""
     return Settings()

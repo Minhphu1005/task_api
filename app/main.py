@@ -20,7 +20,6 @@ from app.db.session import dispose_engine
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    """Manage startup and shutdown for Redis cache and database pools."""
     await cache_service.connect()
     try:
         yield
@@ -30,7 +29,6 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
 
 def create_app() -> FastAPI:
-    """Create and configure the FastAPI application instance."""
     settings = get_settings()
     configure_logging(debug=settings.debug)
 

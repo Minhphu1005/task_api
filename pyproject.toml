@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "taskhub-api"
 version = "0.1.0"
-description = "TaskHub — Task Management API built with FastAPI, SQLAlchemy 2.x async, Alembic, and Redis"
+description = "TaskHub - Task Management API with FastAPI, SQLAlchemy 2.x, Alembic and Redis"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -62,4 +62,5 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
 testpaths = ["tests"]

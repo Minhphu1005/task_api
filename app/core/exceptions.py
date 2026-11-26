@@ -10,16 +10,12 @@ logger = logging.getLogger("taskhub.exceptions")
 
 
 class ErrorResponse(BaseModel):
-    """Standardized API error response schema."""
-
     error: str
     detail: Any
     request_id: str | None = None
 
 
 class AppError(Exception):
-    """Base domain exception mapped to an HTTP status code."""
-
     def __init__(
         self,
         detail: str,
@@ -63,7 +59,6 @@ def _request_id(request: Request) -> str | None:
 
 
 def register_exception_handlers(app: FastAPI) -> None:
-    """Attach centralized exception handlers to the FastAPI app."""
 
     @app.exception_handler(AppError)
     async def handle_app_error(request: Request, exc: AppError) -> JSONResponse:

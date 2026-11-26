@@ -16,7 +16,6 @@ async def get_task(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> TaskResponse:
-    """Return a single task by ID."""
     service = TaskService(session)
     return await service.get_task(task_id, current_user)
 
@@ -29,7 +28,6 @@ async def update_task(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> TaskResponse:
-    """Partially update a task (owner or editor)."""
     service = TaskService(session)
     return await service.update_task(
         task_id,
@@ -49,7 +47,6 @@ async def delete_task(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> Response:
-    """Delete a task (owner or editor)."""
     service = TaskService(session)
     await service.delete_task(task_id, current_user)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -67,7 +64,6 @@ async def attach_label(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> TaskResponse:
-    """Attach a project label to a task (owner or editor)."""
     service = TaskService(session)
     return await service.attach_label(task_id, label_id, current_user)
 
@@ -84,7 +80,6 @@ async def detach_label(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> TaskResponse:
-    """Detach a label from a task (owner or editor)."""
     service = TaskService(session)
     return await service.detach_label(task_id, label_id, current_user)
 
@@ -102,7 +97,6 @@ async def add_comment(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> CommentResponse:
-    """Post a new comment on a task (any workspace member)."""
     service = CommentService(session)
     comment = await service.add_comment(task_id, current_user, payload)
     return CommentResponse.model_validate(comment)
@@ -119,7 +113,6 @@ async def list_comments(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> list[CommentResponse]:
-    """List all comments on a task."""
     service = CommentService(session)
     comments = await service.list_comments(task_id, current_user)
     return [CommentResponse.model_validate(c) for c in comments]

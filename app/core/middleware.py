@@ -13,8 +13,6 @@ logger = logging.getLogger("taskhub.http")
 
 
 class RequestContextMiddleware(BaseHTTPMiddleware):
-    """Attach a unique X-Request-ID and measure request duration."""
-
     async def dispatch(
         self,
         request: Request,
@@ -41,7 +39,6 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
 
 
 def register_middlewares(app: FastAPI, settings: Settings) -> None:
-    """Register CORS and request context middlewares."""
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,

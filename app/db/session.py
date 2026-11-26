@@ -26,7 +26,6 @@ async_session_factory: async_sessionmaker[AsyncSession] = async_sessionmaker(
 
 
 async def get_db() -> AsyncIterator[AsyncSession]:
-    """Yield an async database session per request."""
     async with async_session_factory() as session:
         try:
             yield session
@@ -36,5 +35,4 @@ async def get_db() -> AsyncIterator[AsyncSession]:
 
 
 async def dispose_engine() -> None:
-    """Close database connection pool cleanly."""
     await engine.dispose()

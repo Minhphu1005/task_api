@@ -15,8 +15,6 @@ if TYPE_CHECKING:
 
 
 class Workspace(Base):
-    """Collaborative workspace grouping projects and members."""
-
     __tablename__ = "workspaces"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
@@ -44,8 +42,6 @@ class Workspace(Base):
 
 
 class WorkspaceMember(Base):
-    """Association table linking users to workspaces with a role."""
-
     __tablename__ = "workspace_members"
 
     workspace_id: Mapped[int] = mapped_column(

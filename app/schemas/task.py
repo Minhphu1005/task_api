@@ -6,22 +6,16 @@ from app.models.enums import TaskPriority, TaskStatus
 
 
 class LabelCreate(BaseModel):
-    """Payload to create a project label."""
-
     name: str = Field(..., min_length=1, max_length=60)
     color: str = Field(default="#6366F1", pattern=r"^#[0-9A-Fa-f]{6}$")
 
 
 class LabelUpdate(BaseModel):
-    """Payload to update a project label."""
-
     name: str | None = Field(default=None, min_length=1, max_length=60)
     color: str | None = Field(default=None, pattern=r"^#[0-9A-Fa-f]{6}$")
 
 
 class LabelResponse(BaseModel):
-    """Representation of a project label."""
-
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -31,8 +25,6 @@ class LabelResponse(BaseModel):
 
 
 class TaskCreate(BaseModel):
-    """Payload to create a task inside a project."""
-
     title: str = Field(..., min_length=1, max_length=200)
     description: str | None = Field(default=None, max_length=5000)
     status: TaskStatus = TaskStatus.TODO
@@ -42,8 +34,6 @@ class TaskCreate(BaseModel):
 
 
 class TaskUpdate(BaseModel):
-    """Payload to partially update a task."""
-
     title: str | None = Field(default=None, min_length=1, max_length=200)
     description: str | None = Field(default=None, max_length=5000)
     status: TaskStatus | None = None
@@ -53,8 +43,6 @@ class TaskUpdate(BaseModel):
 
 
 class TaskResponse(BaseModel):
-    """Representation of a task."""
-
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -71,8 +59,6 @@ class TaskResponse(BaseModel):
 
 
 class PaginatedTaskResponse(BaseModel):
-    """Paginated list of tasks."""
-
     items: list[TaskResponse]
     total: int
     page: int
@@ -81,14 +67,10 @@ class PaginatedTaskResponse(BaseModel):
 
 
 class CommentCreate(BaseModel):
-    """Payload to post a comment on a task."""
-
     content: str = Field(..., min_length=1, max_length=4000)
 
 
 class CommentResponse(BaseModel):
-    """Representation of a task comment."""
-
     model_config = ConfigDict(from_attributes=True)
 
     id: int

@@ -14,18 +14,15 @@ class TokenError(Exception):
 
 
 def hash_password(password: str) -> str:
-    """Hash a plain-text password with bcrypt."""
     salt = bcrypt.gensalt()
     return bcrypt.hashpw(password.encode("utf-8"), salt).decode("utf-8")
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify a plain-text password against its bcrypt hash."""
     return bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))
 
 
 def create_access_token(user_id: int, role: str) -> str:
-    """Create a signed JWT access token."""
     settings = get_settings()
     now = datetime.now(UTC)
     expire = now + timedelta(minutes=settings.access_token_expire_minutes)
@@ -41,7 +38,6 @@ def create_access_token(user_id: int, role: str) -> str:
 
 
 def create_refresh_token(user_id: int, role: str) -> str:
-    """Create a signed JWT refresh token."""
     settings = get_settings()
     now = datetime.now(UTC)
     expire = now + timedelta(days=settings.refresh_token_expire_days)
@@ -57,7 +53,6 @@ def create_refresh_token(user_id: int, role: str) -> str:
 
 
 def decode_token(token: str, *, expected_type: str | None = None) -> dict[str, Any]:
-    """Decode and validate a JWT token."""
     settings = get_settings()
     try:
         payload: dict[str, Any] = jwt.decode(
@@ -76,16 +71,12 @@ def decode_token(token: str, *, expected_type: str | None = None) -> dict[str, A
 
 
 class TokenBlacklist:
-    """Stores revoked refresh token JTIs in Redis (with in-memory fallback)."""
-
     PREFIX = "revoked_token:"
 
     async def revoke(self, jti: str, ttl_seconds: int) -> None:
-        """Mark a token JTI as revoked for its remaining lifetime."""
         await cache_service.set_flag(f"{self.PREFIX}{jti}", ttl_seconds=max(ttl_seconds, 1))
 
     async def is_revoked(self, jti: str) -> bool:
-        """Return True if the token JTI has been revoked."""
         return await cache_service.exists(f"{self.PREFIX}{jti}")
 
 

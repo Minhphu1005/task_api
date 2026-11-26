@@ -10,8 +10,6 @@ logger = logging.getLogger("taskhub.notifications")
 
 @dataclass(slots=True)
 class NotificationRecord:
-    """Record of a dispatched notification (useful for auditing and testing)."""
-
     recipient_email: str
     subject: str
     body: str
@@ -28,7 +26,6 @@ def send_task_assigned_email(
     project_id: int,
     assigned_by: str,
 ) -> None:
-    """Send an email notification when a user is assigned to a task."""
     settings = get_settings()
     subject = f"[TaskHub] You were assigned to: {task_title}"
     body = (

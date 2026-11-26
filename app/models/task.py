@@ -15,8 +15,6 @@ if TYPE_CHECKING:
 
 
 class TaskLabel(Base):
-    """Association table between tasks and labels."""
-
     __tablename__ = "task_labels"
 
     task_id: Mapped[int] = mapped_column(
@@ -30,8 +28,6 @@ class TaskLabel(Base):
 
 
 class Task(Base):
-    """Work item belonging to a project."""
-
     __tablename__ = "tasks"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
@@ -91,8 +87,6 @@ class Task(Base):
 
 
 class Label(Base):
-    """Project-scoped label for categorizing tasks."""
-
     __tablename__ = "labels"
     __table_args__ = (UniqueConstraint("project_id", "name", name="uq_labels_project_name"),)
 
@@ -113,8 +107,6 @@ class Label(Base):
 
 
 class Comment(Base):
-    """Discussion comment attached to a task."""
-
     __tablename__ = "comments"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)

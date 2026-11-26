@@ -25,7 +25,6 @@ async def get_project(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> ProjectResponse:
-    """Return a single project if the user has workspace access."""
     service = ProjectService(session)
     project = await service.get_project(project_id, current_user)
     return ProjectResponse.model_validate(project)
@@ -38,7 +37,6 @@ async def update_project(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> ProjectResponse:
-    """Update a project (owner or editor)."""
     service = ProjectService(session)
     project = await service.update_project(project_id, current_user, payload)
     return ProjectResponse.model_validate(project)
@@ -54,7 +52,6 @@ async def archive_project(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> ProjectResponse:
-    """Mark a project as ARCHIVED (owner only)."""
     service = ProjectService(session)
     project = await service.archive_project(project_id, current_user)
     return ProjectResponse.model_validate(project)
@@ -70,7 +67,6 @@ async def delete_project(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> Response:
-    """Delete a project (owner only)."""
     service = ProjectService(session)
     await service.delete_project(project_id, current_user)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -93,7 +89,6 @@ async def list_project_tasks(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> PaginatedTaskResponse:
-    """List tasks in a project with filtering, pagination, and Redis caching."""
     service = TaskService(session)
     return await service.list_project_tasks(
         project_id,
@@ -121,7 +116,6 @@ async def create_project_task(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> TaskResponse:
-    """Create a new task inside a project (owner or editor)."""
     service = TaskService(session)
     return await service.create_task(
         project_id,
@@ -144,7 +138,6 @@ async def create_project_label(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> LabelResponse:
-    """Create a project-scoped label (owner or editor)."""
     service = LabelService(session)
     label = await service.create_label(project_id, current_user, payload)
     return LabelResponse.model_validate(label)
@@ -161,7 +154,6 @@ async def list_project_labels(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> list[LabelResponse]:
-    """List all labels defined for a project."""
     service = LabelService(session)
     labels = await service.list_labels(project_id, current_user)
     return [LabelResponse.model_validate(lbl) for lbl in labels]

@@ -15,8 +15,6 @@ if TYPE_CHECKING:
 
 
 class Project(Base):
-    """Project inside a workspace containing tasks and labels."""
-
     __tablename__ = "projects"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)

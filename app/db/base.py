@@ -11,6 +11,4 @@ NAMING_CONVENTION: dict[str, str] = {
 
 
 class Base(DeclarativeBase):
-    """Declarative base for all SQLAlchemy ORM models."""
-
     metadata = MetaData(naming_convention=NAMING_CONVENTION)

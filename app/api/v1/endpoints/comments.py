@@ -19,7 +19,6 @@ async def delete_comment(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> Response:
-    """Delete a comment (author, workspace owner, or admin)."""
     service = CommentService(session)
     await service.delete_comment(comment_id, current_user)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
