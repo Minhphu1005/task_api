@@ -9,12 +9,7 @@ from app.core.config import get_settings
 from app.core.exceptions import register_exception_handlers
 from app.core.logging import configure_logging
 from app.core.middleware import register_middlewares
-from app.core.openapi import (
-    API_DESCRIPTION,
-    COMMON_ERROR_RESPONSES,
-    TAGS_METADATA,
-    configure_openapi,
-)
+from app.core.openapi import API_DESCRIPTION, TAGS_METADATA
 from app.db.session import dispose_engine
 
 
@@ -44,12 +39,7 @@ def create_app() -> FastAPI:
     )
     register_middlewares(app, settings)
     register_exception_handlers(app)
-    app.include_router(
-        api_router,
-        prefix=settings.api_v1_prefix,
-        responses=COMMON_ERROR_RESPONSES,
-    )
-    configure_openapi(app)
+    app.include_router(api_router, prefix=settings.api_v1_prefix)
     return app
 
 

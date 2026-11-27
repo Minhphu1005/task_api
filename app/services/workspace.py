@@ -1,5 +1,8 @@
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import messages as msg
+from app.core.constants import DEFAULT_PAGE_LIMIT
 from app.core.exceptions import BadRequestError, ConflictError, NotFoundError
 from app.core.permissions import ALL_WORKSPACE_ROLES, OWNER_ONLY, ensure_workspace_role
 from app.models.enums import UserRole, WorkspaceRole
@@ -25,17 +28,23 @@ class WorkspaceService:
 
     async def create_workspace(self, current_user: User, payload: WorkspaceCreate) -> Workspace:
         workspace = await self.workspaces.create(
-            name=payload.name.strip(),
+            name=payload.name,
             owner_id=current_user.id,
         )
         await self.workspaces.add_member(workspace.id, current_user.id, WorkspaceRole.OWNER)
         await self.session.commit()
         return workspace
 
-    async def list_workspaces(self, current_user: User) -> list[Workspace]:
+    async def list_workspaces(
+        self,
+        current_user: User,
+        *,
+        offset: int = 0,
+        limit: int = DEFAULT_PAGE_LIMIT,
+    ) -> list[Workspace]:
         if current_user.role == UserRole.ADMIN:
-            return await self.workspaces.list_all(limit=200)
-        return await self.workspaces.list_for_user(current_user.id)
+            return await self.workspaces.list_all(offset=offset, limit=limit)
+        return await self.workspaces.list_for_user(current_user.id, offset=offset, limit=limit)
 
     async def get_workspace(
         self,
@@ -45,7 +54,7 @@ class WorkspaceService:
         await ensure_workspace_role(self.session, workspace_id, current_user, ALL_WORKSPACE_ROLES)
         workspace = await self.workspaces.get_with_members(workspace_id)
         if workspace is None:
-            raise NotFoundError("Workspace not found")
+            raise NotFoundError(msg.WORKSPACE_NOT_FOUND)
         members = [
             WorkspaceMemberResponse(
                 workspace_id=m.workspace_id,
@@ -74,8 +83,6 @@ class WorkspaceService:
             self.session, workspace_id, current_user, OWNER_ONLY
         )
         updates = payload.model_dump(exclude_unset=True)
-        if "name" in updates and updates["name"] is not None:
-            updates["name"] = updates["name"].strip()
         if not updates:
             return workspace
         updated = await self.workspaces.update(workspace, **updates)
@@ -102,18 +109,21 @@ class WorkspaceService:
             target_user = await self.users.get_by_id(payload.user_id)
         elif payload.email is not None:
             target_user = await self.users.get_by_email(payload.email)
-        else:
-            raise BadRequestError("Either user_id or email must be provided")
 
         if target_user is None:
-            raise NotFoundError("Target user not found")
+            raise NotFoundError(msg.TARGET_USER_NOT_FOUND)
 
         existing = await self.workspaces.get_member(workspace_id, target_user.id)
         if existing is not None:
-            raise ConflictError("User is already a member of this workspace")
+            raise ConflictError(msg.MEMBER_ALREADY_EXISTS)
 
-        member = await self.workspaces.add_member(workspace_id, target_user.id, payload.role)
-        await self.session.commit()
+        try:
+            member = await self.workspaces.add_member(workspace_id, target_user.id, payload.role)
+            await self.session.commit()
+        except IntegrityError as exc:
+            await self.session.rollback()
+            raise ConflictError(msg.MEMBER_ALREADY_EXISTS) from exc
+
         return WorkspaceMemberResponse(
             workspace_id=member.workspace_id,
             user_id=member.user_id,
@@ -133,16 +143,15 @@ class WorkspaceService:
             self.session, workspace_id, current_user, OWNER_ONLY
         )
         if target_user_id == workspace.owner_id and payload.role != WorkspaceRole.OWNER:
-            raise BadRequestError("Cannot downgrade the workspace owner")
+            raise BadRequestError(msg.CANNOT_DOWNGRADE_OWNER)
 
         member: WorkspaceMember | None = await self.workspaces.get_member(
             workspace_id, target_user_id
         )
         if member is None:
-            raise NotFoundError("Workspace member not found")
+            raise NotFoundError(msg.MEMBER_NOT_FOUND)
 
         member.role = payload.role
-        await self.session.flush()
         await self.session.commit()
         user = await self.users.get_by_id(target_user_id)
         return WorkspaceMemberResponse(
@@ -163,11 +172,11 @@ class WorkspaceService:
             self.session, workspace_id, current_user, OWNER_ONLY
         )
         if target_user_id == workspace.owner_id:
-            raise BadRequestError("Cannot remove the workspace owner")
+            raise BadRequestError(msg.CANNOT_REMOVE_OWNER)
 
         member = await self.workspaces.get_member(workspace_id, target_user_id)
         if member is None:
-            raise NotFoundError("Workspace member not found")
+            raise NotFoundError(msg.MEMBER_NOT_FOUND)
 
         await self.workspaces.remove_member(member)
         await self.session.commit()

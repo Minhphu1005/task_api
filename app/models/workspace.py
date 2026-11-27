@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, Enum, ForeignKey, String, func
+from sqlalchemy import DateTime, Enum, ForeignKey, String, func, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -15,6 +15,14 @@ if TYPE_CHECKING:
 
 
 class Workspace(Base):
+    """Workspace entity.
+
+    Ownership invariant: ``owner_id`` is the single source of truth for the primary
+    workspace owner. ``WorkspaceService`` keeps ``workspace_members`` synchronized by
+    always inserting ``owner_id`` with ``WorkspaceRole.OWNER`` on creation and forbidding
+    downgrading or removing that owner membership.
+    """
+
     __tablename__ = "workspaces"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
@@ -34,10 +42,12 @@ class Workspace(Base):
     members: Mapped[list[WorkspaceMember]] = relationship(
         back_populates="workspace",
         cascade="all, delete-orphan",
+        passive_deletes=True,
     )
     projects: Mapped[list[Project]] = relationship(
         back_populates="workspace",
         cascade="all, delete-orphan",
+        passive_deletes=True,
     )
 
 
@@ -51,10 +61,12 @@ class WorkspaceMember(Base):
     user_id: Mapped[int] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"),
         primary_key=True,
+        index=True,
     )
     role: Mapped[WorkspaceRole] = mapped_column(
         Enum(WorkspaceRole, native_enum=False, length=20),
         default=WorkspaceRole.VIEWER,
+        server_default=text("'VIEWER'"),
         nullable=False,
     )
 

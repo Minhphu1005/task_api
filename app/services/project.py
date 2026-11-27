@@ -28,7 +28,7 @@ class ProjectService:
         await ensure_workspace_role(self.session, workspace_id, current_user, EDITOR_OR_OWNER)
         project = await self.projects.create(
             workspace_id=workspace_id,
-            name=payload.name.strip(),
+            name=payload.name,
             description=payload.description,
             status=ProjectStatus.ACTIVE,
         )
@@ -58,8 +58,6 @@ class ProjectService:
     ) -> Project:
         project = await ensure_project_role(self.session, project_id, current_user, EDITOR_OR_OWNER)
         updates = payload.model_dump(exclude_unset=True)
-        if "name" in updates and updates["name"] is not None:
-            updates["name"] = updates["name"].strip()
         if not updates:
             return project
         updated = await self.projects.update(project, **updates)

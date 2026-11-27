@@ -1,22 +1,35 @@
 from datetime import datetime
+from typing import Any
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
 from app.models.enums import WorkspaceRole
+from app.schemas.base import TrimmedBaseModel, reject_explicit_nulls
 
 
-class WorkspaceCreate(BaseModel):
+class WorkspaceCreate(TrimmedBaseModel):
     name: str = Field(..., min_length=2, max_length=150)
 
 
-class WorkspaceUpdate(BaseModel):
+class WorkspaceUpdate(TrimmedBaseModel):
     name: str | None = Field(default=None, min_length=2, max_length=150)
 
+    @model_validator(mode="before")
+    @classmethod
+    def check_no_nulls(cls, data: Any) -> Any:
+        return reject_explicit_nulls(data, ("name",))
 
-class WorkspaceMemberInvite(BaseModel):
+
+class WorkspaceMemberInvite(TrimmedBaseModel):
     email: EmailStr | None = None
     user_id: int | None = None
     role: WorkspaceRole = WorkspaceRole.VIEWER
+
+    @model_validator(mode="after")
+    def validate_exactly_one_identifier(self) -> "WorkspaceMemberInvite":
+        if (self.email is None) == (self.user_id is None):
+            raise ValueError("Provide exactly one of 'email' or 'user_id'")
+        return self
 
 
 class WorkspaceMemberRoleUpdate(BaseModel):

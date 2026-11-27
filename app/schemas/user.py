@@ -1,8 +1,11 @@
 from datetime import datetime
+from typing import Any
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, model_validator
 
 from app.models.enums import UserRole
+from app.schemas.auth import LoginPasswordStr, PasswordStr, TrimmedFullName
+from app.schemas.base import TrimmedBaseModel, reject_explicit_nulls
 
 
 class UserResponse(BaseModel):
@@ -16,10 +19,15 @@ class UserResponse(BaseModel):
     created_at: datetime
 
 
-class UserUpdateRequest(BaseModel):
-    full_name: str | None = Field(default=None, min_length=2, max_length=150)
+class UserUpdateRequest(TrimmedBaseModel):
+    full_name: TrimmedFullName | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def check_no_nulls(cls, data: Any) -> Any:
+        return reject_explicit_nulls(data, ("full_name",))
 
 
 class ChangePasswordRequest(BaseModel):
-    current_password: str = Field(..., min_length=1, max_length=128)
-    new_password: str = Field(..., min_length=8, max_length=128)
+    current_password: LoginPasswordStr
+    new_password: PasswordStr

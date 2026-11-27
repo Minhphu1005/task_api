@@ -2,6 +2,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.constants import DEFAULT_PAGE, DEFAULT_PAGE_LIMIT
 from app.models.enums import TaskPriority, TaskStatus
 from app.models.task import Comment, Label, Task, TaskLabel
 from app.repositories.base import BaseRepository, PaginatedResult
@@ -32,8 +33,8 @@ class TaskRepository(BaseRepository[Task]):
         priority: TaskPriority | None = None,
         assignee_id: int | None = None,
         search: str | None = None,
-        page: int = 1,
-        limit: int = 20,
+        page: int = DEFAULT_PAGE,
+        limit: int = DEFAULT_PAGE_LIMIT,
     ) -> PaginatedResult[Task]:
         stmt = select(Task).where(Task.project_id == project_id).options(selectinload(Task.labels))
         if status is not None:
@@ -43,7 +44,7 @@ class TaskRepository(BaseRepository[Task]):
         if assignee_id is not None:
             stmt = stmt.where(Task.assignee_id == assignee_id)
         if search:
-            stmt = stmt.where(Task.title.ilike(f"%{search}%"))
+            stmt = stmt.where(Task.title.icontains(search, autoescape=True))
         stmt = stmt.order_by(Task.created_at.desc(), Task.id.desc())
         return await self.paginate(stmt, page=page, limit=limit)
 

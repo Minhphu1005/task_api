@@ -2,6 +2,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.constants import DEFAULT_PAGE_LIMIT
 from app.models.enums import WorkspaceRole
 from app.models.workspace import Workspace, WorkspaceMember
 from app.repositories.base import BaseRepository
@@ -20,12 +21,20 @@ class WorkspaceRepository(BaseRepository[Workspace]):
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
-    async def list_for_user(self, user_id: int) -> list[Workspace]:
+    async def list_for_user(
+        self,
+        user_id: int,
+        *,
+        offset: int = 0,
+        limit: int = DEFAULT_PAGE_LIMIT,
+    ) -> list[Workspace]:
         stmt = (
             select(Workspace)
             .join(WorkspaceMember, WorkspaceMember.workspace_id == Workspace.id)
             .where(WorkspaceMember.user_id == user_id)
-            .order_by(Workspace.created_at.desc())
+            .order_by(Workspace.created_at.desc(), Workspace.id.desc())
+            .offset(offset)
+            .limit(limit)
         )
         result = await self.session.execute(stmt)
         return list(result.scalars().all())

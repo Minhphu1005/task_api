@@ -10,21 +10,30 @@ from redis.exceptions import RedisError
 from app.core.config import get_settings
 
 logger = logging.getLogger("taskhub.cache")
+RECONNECT_INTERVAL_SECONDS = 30.0
 
 
 class CacheService:
     def __init__(self) -> None:
         self._redis: Redis | None = None
         self._memory: dict[str, tuple[str, float]] = {}
+        self._last_connect_attempt: float = 0.0
+
+    @property
+    def redis_client(self) -> Redis | None:
+        return self._redis
 
     async def connect(self) -> None:
         settings = get_settings()
+        self._last_connect_attempt = time.monotonic()
         try:
             client: Redis = Redis.from_url(
                 settings.redis_url,
                 encoding="utf-8",
                 decode_responses=True,
-                socket_connect_timeout=1.5,
+                socket_connect_timeout=settings.redis_socket_connect_timeout,
+                socket_timeout=settings.redis_socket_timeout,
+                retry_on_timeout=True,
             )
             await client.ping()
             self._redis = client
@@ -32,6 +41,14 @@ class CacheService:
         except Exception as exc:
             self._redis = None
             logger.warning("Redis unavailable (%s); falling back to in-memory cache", exc)
+
+    async def _maybe_reconnect(self) -> None:
+        if self._redis is not None:
+            return
+        if get_settings().environment == "test":
+            return
+        if time.monotonic() - self._last_connect_attempt >= RECONNECT_INTERVAL_SECONDS:
+            await self.connect()
 
     async def close(self) -> None:
         if self._redis is not None:
@@ -45,6 +62,7 @@ class CacheService:
             self._memory.pop(key, None)
 
     async def get_json(self, key: str) -> Any | None:
+        await self._maybe_reconnect()
         if self._redis is not None:
             try:
                 raw = await self._redis.get(key)
@@ -59,6 +77,7 @@ class CacheService:
         return json.loads(entry[0])
 
     async def set_json(self, key: str, value: Any, ttl_seconds: int | None = None) -> None:
+        await self._maybe_reconnect()
         ttl = ttl_seconds if ttl_seconds is not None else get_settings().cache_ttl_seconds
         payload = json.dumps(value, default=str)
         if self._redis is not None:
@@ -70,13 +89,8 @@ class CacheService:
 
         self._memory[key] = (payload, time.monotonic() + max(ttl, 1))
 
-    async def set_flag(self, key: str, ttl_seconds: int) -> None:
-        await self.set_json(key, True, ttl_seconds=ttl_seconds)
-
-    async def exists(self, key: str) -> bool:
-        return (await self.get_json(key)) is not None
-
     async def delete_pattern(self, pattern: str) -> int:
+        await self._maybe_reconnect()
         deleted = 0
         if self._redis is not None:
             try:

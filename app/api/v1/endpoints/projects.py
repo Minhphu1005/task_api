@@ -1,7 +1,9 @@
+from typing import Annotated
+
 from fastapi import APIRouter, BackgroundTasks, Depends, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user
+from app.api.deps import PaginationDep, get_current_user
 from app.db.session import get_db
 from app.models.enums import TaskPriority, TaskStatus
 from app.models.user import User
@@ -80,12 +82,11 @@ async def delete_project(
 )
 async def list_project_tasks(
     project_id: int,
-    task_status: TaskStatus | None = Query(default=None, alias="status"),
-    priority: TaskPriority | None = Query(default=None),
-    assignee_id: int | None = Query(default=None),
-    search: str | None = Query(default=None, max_length=100),
-    page: int = Query(default=1, ge=1),
-    limit: int = Query(default=20, ge=1, le=100),
+    pagination: PaginationDep,
+    task_status: Annotated[TaskStatus | None, Query(alias="status")] = None,
+    priority: Annotated[TaskPriority | None, Query()] = None,
+    assignee_id: Annotated[int | None, Query()] = None,
+    search: Annotated[str | None, Query(max_length=100)] = None,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> PaginatedTaskResponse:
@@ -97,8 +98,8 @@ async def list_project_tasks(
         priority=priority,
         assignee_id=assignee_id,
         search=search,
-        page=page,
-        limit=limit,
+        page=pagination.page,
+        limit=pagination.limit,
     )
 
 

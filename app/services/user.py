@@ -1,5 +1,8 @@
+from datetime import UTC, datetime
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import messages as msg
 from app.core.exceptions import BadRequestError
 from app.core.security import hash_password, verify_password
 from app.models.user import User
@@ -14,8 +17,6 @@ class UserService:
 
     async def update_profile(self, user: User, payload: UserUpdateRequest) -> User:
         updates = payload.model_dump(exclude_unset=True)
-        if "full_name" in updates and updates["full_name"] is not None:
-            updates["full_name"] = updates["full_name"].strip()
         if not updates:
             return user
         updated = await self.users.update(user, **updates)
@@ -24,8 +25,12 @@ class UserService:
 
     async def change_password(self, user: User, payload: ChangePasswordRequest) -> None:
         if not verify_password(payload.current_password, user.hashed_password):
-            raise BadRequestError("Current password is incorrect")
+            raise BadRequestError(msg.CURRENT_PASSWORD_INCORRECT)
         if payload.current_password == payload.new_password:
-            raise BadRequestError("New password must be different from current password")
-        await self.users.update(user, hashed_password=hash_password(payload.new_password))
+            raise BadRequestError(msg.PASSWORD_MUST_DIFFER)
+        await self.users.update(
+            user,
+            hashed_password=hash_password(payload.new_password),
+            password_changed_at=datetime.now(UTC),
+        )
         await self.session.commit()

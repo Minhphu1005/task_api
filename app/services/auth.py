@@ -1,7 +1,9 @@
 from datetime import UTC, datetime
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import messages as msg
 from app.core.exceptions import ConflictError, ForbiddenError, UnauthorizedError
 from app.core.security import (
     TokenError,
@@ -23,6 +25,12 @@ from app.schemas.auth import (
 )
 
 
+def _to_utc_timestamp(dt: datetime) -> float:
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=UTC).timestamp()
+    return dt.timestamp()
+
+
 class AuthService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
@@ -32,22 +40,26 @@ class AuthService:
         normalized_email = payload.email.lower()
         existing = await self.users.get_by_email(normalized_email)
         if existing is not None:
-            raise ConflictError("Email is already registered")
+            raise ConflictError(msg.EMAIL_ALREADY_REGISTERED)
 
-        user = await self.users.create(
-            email=normalized_email,
-            full_name=payload.full_name.strip(),
-            hashed_password=hash_password(payload.password),
-        )
-        await self.session.commit()
+        try:
+            user = await self.users.create(
+                email=normalized_email,
+                full_name=payload.full_name,
+                hashed_password=hash_password(payload.password),
+            )
+            await self.session.commit()
+        except IntegrityError as exc:
+            await self.session.rollback()
+            raise ConflictError(msg.EMAIL_ALREADY_REGISTERED) from exc
         return user
 
     async def login(self, payload: LoginRequest) -> TokenPairResponse:
         user = await self.users.get_by_email(payload.email.lower())
         if user is None or not verify_password(payload.password, user.hashed_password):
-            raise UnauthorizedError("Invalid email or password")
+            raise UnauthorizedError(msg.INVALID_CREDENTIALS)
         if not user.is_active:
-            raise ForbiddenError("User account is inactive")
+            raise ForbiddenError(msg.USER_INACTIVE)
 
         return TokenPairResponse(
             access_token=create_access_token(user.id, user.role.value),
@@ -59,19 +71,25 @@ class AuthService:
             claims = decode_token(payload.refresh_token, expected_type="refresh")
             user_id = int(claims["sub"])
             jti = str(claims["jti"])
+            iat = float(claims["iat"])
             exp = int(claims["exp"])
         except (TokenError, ValueError, KeyError) as exc:
-            raise UnauthorizedError("Invalid or expired refresh token") from exc
+            raise UnauthorizedError(msg.INVALID_REFRESH_TOKEN) from exc
 
-        if await token_blacklist.is_revoked(jti):
-            raise UnauthorizedError("Refresh token has been revoked")
+        # Atomically claim/revoke the refresh token before any DB lookup so concurrent
+        # refresh requests with the same token cannot both succeed.
+        ttl = max(int(exp - datetime.now(UTC).timestamp()), 1)
+        if not await token_blacklist.claim_revoked(jti, ttl):
+            raise UnauthorizedError(msg.REFRESH_TOKEN_REVOKED)
 
         user = await self.users.get_by_id(user_id)
         if user is None or not user.is_active:
-            raise UnauthorizedError("User account not found or inactive")
+            raise UnauthorizedError(msg.USER_NOT_FOUND)
 
-        ttl = max(int(exp - datetime.now(UTC).timestamp()), 1)
-        await token_blacklist.revoke(jti, ttl)
+        if user.password_changed_at is not None and iat < _to_utc_timestamp(
+            user.password_changed_at
+        ):
+            raise UnauthorizedError(msg.REFRESH_TOKEN_REVOKED)
 
         return TokenPairResponse(
             access_token=create_access_token(user.id, user.role.value),
@@ -84,7 +102,7 @@ class AuthService:
             jti = str(claims["jti"])
             exp = int(claims["exp"])
         except (TokenError, ValueError, KeyError) as exc:
-            raise UnauthorizedError("Invalid or expired refresh token") from exc
+            raise UnauthorizedError(msg.INVALID_REFRESH_TOKEN) from exc
 
         ttl = max(int(exp - datetime.now(UTC).timestamp()), 1)
         await token_blacklist.revoke(jti, ttl)

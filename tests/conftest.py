@@ -6,10 +6,10 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.cache import cache_service
+from app.core.security import token_blacklist
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import create_app
-from app.services.notification import sent_notifications
 
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 
@@ -35,7 +35,7 @@ async def db_session() -> AsyncIterator[AsyncSession]:
 @pytest.fixture
 async def client(db_session: AsyncSession) -> AsyncIterator[AsyncClient]:
     cache_service.clear_memory()
-    sent_notifications.clear()
+    token_blacklist.clear_memory()
 
     app = create_app()
 
@@ -50,7 +50,7 @@ async def client(db_session: AsyncSession) -> AsyncIterator[AsyncClient]:
 
     app.dependency_overrides.clear()
     cache_service.clear_memory()
-    sent_notifications.clear()
+    token_blacklist.clear_memory()
 
 
 async def register_and_login(

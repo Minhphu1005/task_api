@@ -1,7 +1,9 @@
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user
+from app.api.deps import PaginationDep, get_current_user
 from app.db.session import get_db
 from app.models.enums import ProjectStatus
 from app.models.user import User
@@ -39,11 +41,16 @@ async def create_workspace(
 
 @router.get("", response_model=list[WorkspaceResponse], summary="List workspaces")
 async def list_workspaces(
+    pagination: PaginationDep,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> list[WorkspaceResponse]:
     service = WorkspaceService(session)
-    workspaces = await service.list_workspaces(current_user)
+    workspaces = await service.list_workspaces(
+        current_user,
+        offset=pagination.offset,
+        limit=pagination.limit,
+    )
     return [WorkspaceResponse.model_validate(w) for w in workspaces]
 
 
@@ -158,7 +165,7 @@ async def create_project(
 )
 async def list_projects(
     workspace_id: int,
-    project_status: ProjectStatus | None = Query(default=None, alias="status"),
+    project_status: Annotated[ProjectStatus | None, Query(alias="status")] = None,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> list[ProjectResponse]:

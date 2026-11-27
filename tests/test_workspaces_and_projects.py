@@ -11,7 +11,6 @@ async def test_workspace_crud_members_and_rbac(client: AsyncClient) -> None:
     viewer = await register_and_login(client, email="viewer@example.com", full_name="Viewer")
     outsider = await register_and_login(client, email="outsider@example.com", full_name="Outsider")
 
-    # Owner creates workspace
     ws_resp = await client.post(
         "/api/v1/workspaces",
         headers=owner["headers"],
@@ -19,6 +18,21 @@ async def test_workspace_crud_members_and_rbac(client: AsyncClient) -> None:
     )
     assert ws_resp.status_code == 201
     ws_id = ws_resp.json()["id"]
+
+    # Invite with both email and user_id (or neither) returns 422
+    both_ids = await client.post(
+        f"/api/v1/workspaces/{ws_id}/members",
+        headers=owner["headers"],
+        json={"email": "editor@example.com", "user_id": editor["user"]["id"], "role": "EDITOR"},
+    )
+    assert both_ids.status_code == 422
+
+    neither_id = await client.post(
+        f"/api/v1/workspaces/{ws_id}/members",
+        headers=owner["headers"],
+        json={"role": "EDITOR"},
+    )
+    assert neither_id.status_code == 422
 
     # Invite editor and viewer
     inv_editor = await client.post(
@@ -35,17 +49,25 @@ async def test_workspace_crud_members_and_rbac(client: AsyncClient) -> None:
     )
     assert inv_viewer.status_code == 201
 
-    # Outsider cannot read workspace
+    # Outsider gets 404 (prevents workspace ID enumeration)
     outsider_get = await client.get(f"/api/v1/workspaces/{ws_id}", headers=outsider["headers"])
-    assert outsider_get.status_code == 403
+    assert outsider_get.status_code == 404
 
-    # Editor cannot update workspace name (OWNER only)
+    # Editor cannot update workspace name (OWNER only -> 403)
     editor_patch = await client.patch(
         f"/api/v1/workspaces/{ws_id}",
         headers=editor["headers"],
         json={"name": "Hacked"},
     )
     assert editor_patch.status_code == 403
+
+    # Explicit null for workspace name returns 422
+    null_ws = await client.patch(
+        f"/api/v1/workspaces/{ws_id}",
+        headers=owner["headers"],
+        json={"name": None},
+    )
+    assert null_ws.status_code == 422
 
     # Owner updates workspace
     owner_patch = await client.patch(
@@ -55,6 +77,15 @@ async def test_workspace_crud_members_and_rbac(client: AsyncClient) -> None:
     )
     assert owner_patch.status_code == 200
     assert owner_patch.json()["name"] == "Core Engineering"
+
+    # Workspace list supports pagination
+    ws_list = await client.get(
+        "/api/v1/workspaces",
+        headers=owner["headers"],
+        params={"page": 1, "limit": 10},
+    )
+    assert ws_list.status_code == 200
+    assert len(ws_list.json()) == 1
 
     # Editor can create a project, viewer cannot
     viewer_proj = await client.post(
@@ -71,6 +102,23 @@ async def test_workspace_crud_members_and_rbac(client: AsyncClient) -> None:
     )
     assert editor_proj.status_code == 201
     proj_id = editor_proj.json()["id"]
+
+    # Explicit null for project name returns 422
+    null_proj = await client.patch(
+        f"/api/v1/projects/{proj_id}",
+        headers=editor["headers"],
+        json={"name": None},
+    )
+    assert null_proj.status_code == 422
+
+    # Editor cannot archive project via PATCH (status field is not accepted on PATCH)
+    editor_sneaky = await client.patch(
+        f"/api/v1/projects/{proj_id}",
+        headers=editor["headers"],
+        json={"name": "Backend API v2", "status": "ARCHIVED"},
+    )
+    assert editor_sneaky.status_code == 200
+    assert editor_sneaky.json()["status"] == "ACTIVE"
 
     # Viewer can read project
     viewer_read = await client.get(f"/api/v1/projects/{proj_id}", headers=viewer["headers"])
@@ -90,7 +138,7 @@ async def test_workspace_crud_members_and_rbac(client: AsyncClient) -> None:
     assert owner_archive.status_code == 200
     assert owner_archive.json()["status"] == "ARCHIVED"
 
-    # Remove viewer from workspace
+    # Remove viewer from workspace -> viewer now gets 404
     remove_resp = await client.delete(
         f"/api/v1/workspaces/{ws_id}/members/{viewer['user']['id']}",
         headers=owner["headers"],
@@ -98,4 +146,4 @@ async def test_workspace_crud_members_and_rbac(client: AsyncClient) -> None:
     assert remove_resp.status_code == 204
 
     viewer_after = await client.get(f"/api/v1/workspaces/{ws_id}", headers=viewer["headers"])
-    assert viewer_after.status_code == 403
+    assert viewer_after.status_code == 404

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, Enum, String, func
+from sqlalchemy import Boolean, DateTime, Enum, String, func, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -24,9 +24,19 @@ class User(Base):
     role: Mapped[UserRole] = mapped_column(
         Enum(UserRole, native_enum=False, length=20),
         default=UserRole.MEMBER,
+        server_default=text("'MEMBER'"),
         nullable=False,
     )
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    is_active: Mapped[bool] = mapped_column(
+        Boolean,
+        default=True,
+        server_default=text("true"),
+        nullable=False,
+    )
+    password_changed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
@@ -36,14 +46,17 @@ class User(Base):
     owned_workspaces: Mapped[list[Workspace]] = relationship(
         back_populates="owner",
         cascade="all, delete-orphan",
+        passive_deletes=True,
     )
     workspace_memberships: Mapped[list[WorkspaceMember]] = relationship(
         back_populates="user",
         cascade="all, delete-orphan",
+        passive_deletes=True,
     )
     assigned_tasks: Mapped[list[Task]] = relationship(
         back_populates="assignee",
         foreign_keys="Task.assignee_id",
+        passive_deletes=True,
     )
     created_tasks: Mapped[list[Task]] = relationship(
         back_populates="creator",
@@ -51,5 +64,4 @@ class User(Base):
     )
     comments: Mapped[list[Comment]] = relationship(
         back_populates="author",
-        cascade="all, delete-orphan",
     )
