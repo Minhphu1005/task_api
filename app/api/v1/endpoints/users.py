@@ -13,7 +13,6 @@ router = APIRouter(prefix="/users", tags=["Users"])
 
 @router.get("/me", response_model=UserResponse, summary="Get current user profile")
 async def get_me(current_user: User = Depends(get_current_user)) -> UserResponse:
-    """Return the authenticated user's profile."""
     return UserResponse.model_validate(current_user)
 
 
@@ -23,7 +22,6 @@ async def update_me(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> UserResponse:
-    """Partially update the authenticated user's profile."""
     service = UserService(session)
     updated = await service.update_profile(current_user, payload)
     return UserResponse.model_validate(updated)
@@ -39,7 +37,6 @@ async def change_password(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> MessageResponse:
-    """Change the authenticated user's password."""
     service = UserService(session)
     await service.change_password(current_user, payload)
     return MessageResponse(message="Password updated successfully")

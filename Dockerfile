@@ -1,4 +1,4 @@
-# Stage 1: Builder
+# Stage 1: Builder (dependencies installed in a separate cached layer before copying app code)
 FROM python:3.12-slim AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -11,9 +11,12 @@ RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 COPY pyproject.toml README.md ./
-COPY app ./app
+RUN mkdir -p app && touch app/__init__.py && \
+    pip install --upgrade pip && \
+    pip install .
 
-RUN pip install --upgrade pip && pip install .
+COPY app ./app
+RUN pip install --no-deps --no-build-isolation .
 
 # Stage 2: Runtime
 FROM python:3.12-slim AS runtime

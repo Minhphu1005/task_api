@@ -1,23 +1,10 @@
 import logging
 import smtplib
-from dataclasses import dataclass
 from email.message import EmailMessage
 
 from app.core.config import get_settings
 
 logger = logging.getLogger("taskhub.notifications")
-
-
-@dataclass(slots=True)
-class NotificationRecord:
-    """Record of a dispatched notification (useful for auditing and testing)."""
-
-    recipient_email: str
-    subject: str
-    body: str
-
-
-sent_notifications: list[NotificationRecord] = []
 
 
 def send_task_assigned_email(
@@ -28,17 +15,12 @@ def send_task_assigned_email(
     project_id: int,
     assigned_by: str,
 ) -> None:
-    """Send an email notification when a user is assigned to a task."""
     settings = get_settings()
     subject = f"[TaskHub] You were assigned to: {task_title}"
     body = (
         f"Hi {recipient_name},\n\n"
         f"{assigned_by} assigned you to task '{task_title}' in project #{project_id}.\n\n"
         "Best regards,\nTaskHub"
-    )
-
-    sent_notifications.append(
-        NotificationRecord(recipient_email=recipient_email, subject=subject, body=body)
     )
 
     if not settings.smtp_enabled:

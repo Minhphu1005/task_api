@@ -8,7 +8,6 @@ router = APIRouter(tags=["Health"])
 
 @router.get("/health", response_model=HealthResponse, summary="Health check")
 async def health_check(settings: Settings = Depends(get_settings)) -> HealthResponse:
-    """Return service health metadata."""
     return HealthResponse(
         status="ok",
         app_name=settings.app_name,

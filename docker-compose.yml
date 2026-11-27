@@ -40,7 +40,7 @@ services:
       DEBUG: ${DEBUG:-false}
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-taskhub}:${POSTGRES_PASSWORD:-taskhub}@db:5432/${POSTGRES_DB:-taskhub}
       REDIS_URL: redis://redis:6379/0
-      SECRET_KEY: ${SECRET_KEY:-taskhub-docker-compose-secret-key-please-override-32chars}
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required}
       CACHE_TTL_SECONDS: ${CACHE_TTL_SECONDS:-60}
     ports:
       - "8000:8000"

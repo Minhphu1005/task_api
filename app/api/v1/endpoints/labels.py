@@ -17,7 +17,6 @@ async def update_label(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> LabelResponse:
-    """Update a label's name or color (owner or editor)."""
     service = LabelService(session)
     label = await service.update_label(label_id, current_user, payload)
     return LabelResponse.model_validate(label)
@@ -33,7 +32,6 @@ async def delete_label(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> Response:
-    """Delete a label (owner or editor)."""
     service = LabelService(session)
     await service.delete_label(label_id, current_user)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

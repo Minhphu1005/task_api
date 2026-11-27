@@ -1,39 +1,42 @@
 from datetime import datetime
+from typing import Any
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
 from app.models.enums import WorkspaceRole
+from app.schemas.base import TrimmedBaseModel, reject_explicit_nulls
 
 
-class WorkspaceCreate(BaseModel):
-    """Payload to create a new workspace."""
-
+class WorkspaceCreate(TrimmedBaseModel):
     name: str = Field(..., min_length=2, max_length=150)
 
 
-class WorkspaceUpdate(BaseModel):
-    """Payload to update a workspace."""
-
+class WorkspaceUpdate(TrimmedBaseModel):
     name: str | None = Field(default=None, min_length=2, max_length=150)
 
+    @model_validator(mode="before")
+    @classmethod
+    def check_no_nulls(cls, data: Any) -> Any:
+        return reject_explicit_nulls(data, ("name",))
 
-class WorkspaceMemberInvite(BaseModel):
-    """Payload to invite an existing user into a workspace."""
 
+class WorkspaceMemberInvite(TrimmedBaseModel):
     email: EmailStr | None = None
     user_id: int | None = None
     role: WorkspaceRole = WorkspaceRole.VIEWER
 
+    @model_validator(mode="after")
+    def validate_exactly_one_identifier(self) -> "WorkspaceMemberInvite":
+        if (self.email is None) == (self.user_id is None):
+            raise ValueError("Provide exactly one of 'email' or 'user_id'")
+        return self
+
 
 class WorkspaceMemberRoleUpdate(BaseModel):
-    """Payload to change a member's workspace role."""
-
     role: WorkspaceRole
 
 
 class WorkspaceMemberResponse(BaseModel):
-    """Member entry inside a workspace."""
-
     model_config = ConfigDict(from_attributes=True)
 
     workspace_id: int
@@ -44,8 +47,6 @@ class WorkspaceMemberResponse(BaseModel):
 
 
 class WorkspaceResponse(BaseModel):
-    """Summary representation of a workspace."""
-
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -55,6 +56,4 @@ class WorkspaceResponse(BaseModel):
 
 
 class WorkspaceDetailResponse(WorkspaceResponse):
-    """Workspace representation including its member list."""
-
     members: list[WorkspaceMemberResponse] = Field(default_factory=list)

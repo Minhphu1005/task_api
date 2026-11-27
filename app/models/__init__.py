@@ -1,5 +1,3 @@
-"""SQLAlchemy ORM models."""
-
 from app.models.enums import (
     ProjectStatus,
     TaskPriority,

@@ -2,6 +2,7 @@ import logging
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request, status
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -10,27 +11,25 @@ logger = logging.getLogger("taskhub.exceptions")
 
 
 class ErrorResponse(BaseModel):
-    """Standardized API error response schema."""
-
     error: str
     detail: Any
     request_id: str | None = None
 
 
 class AppError(Exception):
-    """Base domain exception mapped to an HTTP status code."""
-
     def __init__(
         self,
         detail: str,
         *,
         status_code: int = status.HTTP_400_BAD_REQUEST,
         error: str = "application_error",
+        headers: dict[str, str] | None = None,
     ) -> None:
         super().__init__(detail)
         self.detail = detail
         self.status_code = status_code
         self.error = error
+        self.headers = headers
 
 
 class BadRequestError(AppError):
@@ -39,8 +38,18 @@ class BadRequestError(AppError):
 
 
 class UnauthorizedError(AppError):
-    def __init__(self, detail: str = "Not authenticated") -> None:
-        super().__init__(detail, status_code=status.HTTP_401_UNAUTHORIZED, error="unauthorized")
+    def __init__(
+        self,
+        detail: str = "Not authenticated",
+        *,
+        headers: dict[str, str] | None = None,
+    ) -> None:
+        super().__init__(
+            detail,
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            error="unauthorized",
+            headers=headers,
+        )
 
 
 class ForbiddenError(AppError):
@@ -58,17 +67,28 @@ class ConflictError(AppError):
         super().__init__(detail, status_code=status.HTTP_409_CONFLICT, error="conflict")
 
 
+class ServiceUnavailableError(AppError):
+    def __init__(self, detail: str = "Service temporarily unavailable") -> None:
+        super().__init__(
+            detail,
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            error="service_unavailable",
+        )
+
+
 def _request_id(request: Request) -> str | None:
     return getattr(request.state, "request_id", None)
 
 
 def register_exception_handlers(app: FastAPI) -> None:
-    """Attach centralized exception handlers to the FastAPI app."""
-
     @app.exception_handler(AppError)
     async def handle_app_error(request: Request, exc: AppError) -> JSONResponse:
         body = ErrorResponse(error=exc.error, detail=exc.detail, request_id=_request_id(request))
-        return JSONResponse(status_code=exc.status_code, content=body.model_dump())
+        return JSONResponse(
+            status_code=exc.status_code,
+            content=body.model_dump(),
+            headers=exc.headers,
+        )
 
     @app.exception_handler(HTTPException)
     async def handle_http_exception(request: Request, exc: HTTPException) -> JSONResponse:
@@ -90,11 +110,11 @@ def register_exception_handlers(app: FastAPI) -> None:
     ) -> JSONResponse:
         body = ErrorResponse(
             error="validation_error",
-            detail=exc.errors(),
+            detail=jsonable_encoder(exc.errors()),
             request_id=_request_id(request),
         )
         return JSONResponse(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             content=body.model_dump(),
         )
 

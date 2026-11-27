@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, Enum, ForeignKey, String, Text, UniqueConstraint, func
+from sqlalchemy import DateTime, Enum, ForeignKey, String, Text, UniqueConstraint, func, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -15,8 +15,6 @@ if TYPE_CHECKING:
 
 
 class TaskLabel(Base):
-    """Association table between tasks and labels."""
-
     __tablename__ = "task_labels"
 
     task_id: Mapped[int] = mapped_column(
@@ -26,12 +24,11 @@ class TaskLabel(Base):
     label_id: Mapped[int] = mapped_column(
         ForeignKey("labels.id", ondelete="CASCADE"),
         primary_key=True,
+        index=True,
     )
 
 
 class Task(Base):
-    """Work item belonging to a project."""
-
     __tablename__ = "tasks"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
@@ -50,18 +47,20 @@ class Task(Base):
     status: Mapped[TaskStatus] = mapped_column(
         Enum(TaskStatus, native_enum=False, length=20),
         default=TaskStatus.TODO,
+        server_default=text("'TODO'"),
         index=True,
         nullable=False,
     )
     priority: Mapped[TaskPriority] = mapped_column(
         Enum(TaskPriority, native_enum=False, length=20),
         default=TaskPriority.MEDIUM,
+        server_default=text("'MEDIUM'"),
         index=True,
         nullable=False,
     )
     due_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_by: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"),
+        ForeignKey("users.id", ondelete="RESTRICT"),
         index=True,
         nullable=False,
     )
@@ -83,16 +82,16 @@ class Task(Base):
     labels: Mapped[list[Label]] = relationship(
         secondary="task_labels",
         back_populates="tasks",
+        passive_deletes=True,
     )
     comments: Mapped[list[Comment]] = relationship(
         back_populates="task",
         cascade="all, delete-orphan",
+        passive_deletes=True,
     )
 
 
 class Label(Base):
-    """Project-scoped label for categorizing tasks."""
-
     __tablename__ = "labels"
     __table_args__ = (UniqueConstraint("project_id", "name", name="uq_labels_project_name"),)
 
@@ -103,18 +102,22 @@ class Label(Base):
         nullable=False,
     )
     name: Mapped[str] = mapped_column(String(60), nullable=False)
-    color: Mapped[str] = mapped_column(String(20), default="#6366F1", nullable=False)
+    color: Mapped[str] = mapped_column(
+        String(20),
+        default="#6366F1",
+        server_default=text("'#6366F1'"),
+        nullable=False,
+    )
 
     project: Mapped[Project] = relationship(back_populates="labels")
     tasks: Mapped[list[Task]] = relationship(
         secondary="task_labels",
         back_populates="labels",
+        passive_deletes=True,
     )
 
 
 class Comment(Base):
-    """Discussion comment attached to a task."""
-
     __tablename__ = "comments"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
@@ -124,7 +127,7 @@ class Comment(Base):
         nullable=False,
     )
     author_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id", ondelete="CASCADE"),
+        ForeignKey("users.id", ondelete="RESTRICT"),
         index=True,
         nullable=False,
     )

@@ -3,7 +3,6 @@ import sys
 
 
 def configure_logging(*, debug: bool = False) -> None:
-    """Configure structured console logging for the application."""
     level = logging.DEBUG if debug else logging.INFO
     logging.basicConfig(
         level=level,

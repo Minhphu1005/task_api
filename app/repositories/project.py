@@ -7,8 +7,6 @@ from app.repositories.base import BaseRepository
 
 
 class ProjectRepository(BaseRepository[Project]):
-    """Data access repository for Project entities."""
-
     def __init__(self, session: AsyncSession) -> None:
         super().__init__(session, Project)
 
@@ -18,7 +16,6 @@ class ProjectRepository(BaseRepository[Project]):
         *,
         status: ProjectStatus | None = None,
     ) -> list[Project]:
-        """List all projects in a workspace, optionally filtered by status."""
         stmt = select(Project).where(Project.workspace_id == workspace_id)
         if status is not None:
             stmt = stmt.where(Project.status == status)

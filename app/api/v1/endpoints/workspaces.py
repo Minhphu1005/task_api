@@ -1,7 +1,9 @@
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.deps import get_current_user
+from app.api.deps import PaginationDep, get_current_user
 from app.db.session import get_db
 from app.models.enums import ProjectStatus
 from app.models.user import User
@@ -32,7 +34,6 @@ async def create_workspace(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> WorkspaceResponse:
-    """Create a new workspace owned by the authenticated user."""
     service = WorkspaceService(session)
     workspace = await service.create_workspace(current_user, payload)
     return WorkspaceResponse.model_validate(workspace)
@@ -40,12 +41,16 @@ async def create_workspace(
 
 @router.get("", response_model=list[WorkspaceResponse], summary="List workspaces")
 async def list_workspaces(
+    pagination: PaginationDep,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> list[WorkspaceResponse]:
-    """List workspaces the current user belongs to."""
     service = WorkspaceService(session)
-    workspaces = await service.list_workspaces(current_user)
+    workspaces = await service.list_workspaces(
+        current_user,
+        offset=pagination.offset,
+        limit=pagination.limit,
+    )
     return [WorkspaceResponse.model_validate(w) for w in workspaces]
 
 
@@ -55,7 +60,6 @@ async def get_workspace(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> WorkspaceDetailResponse:
-    """Get workspace details including its members."""
     service = WorkspaceService(session)
     return await service.get_workspace(workspace_id, current_user)
 
@@ -67,7 +71,6 @@ async def update_workspace(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> WorkspaceResponse:
-    """Update workspace metadata (owner only)."""
     service = WorkspaceService(session)
     workspace = await service.update_workspace(workspace_id, current_user, payload)
     return WorkspaceResponse.model_validate(workspace)
@@ -83,7 +86,6 @@ async def delete_workspace(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> Response:
-    """Delete a workspace and all nested resources (owner only)."""
     service = WorkspaceService(session)
     await service.delete_workspace(workspace_id, current_user)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -101,7 +103,6 @@ async def invite_member(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> WorkspaceMemberResponse:
-    """Invite an existing user to the workspace with a specific role (owner only)."""
     service = WorkspaceService(session)
     return await service.invite_member(workspace_id, current_user, payload)
 
@@ -118,7 +119,6 @@ async def update_member_role(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> WorkspaceMemberResponse:
-    """Change a member's role inside the workspace (owner only)."""
     service = WorkspaceService(session)
     return await service.update_member_role(workspace_id, user_id, current_user, payload)
 
@@ -134,7 +134,6 @@ async def remove_member(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> Response:
-    """Remove a user from the workspace (owner only)."""
     service = WorkspaceService(session)
     await service.remove_member(workspace_id, user_id, current_user)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -153,7 +152,6 @@ async def create_project(
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> ProjectResponse:
-    """Create a new project within a workspace (owner or editor)."""
     service = ProjectService(session)
     project = await service.create_project(workspace_id, current_user, payload)
     return ProjectResponse.model_validate(project)
@@ -167,11 +165,10 @@ async def create_project(
 )
 async def list_projects(
     workspace_id: int,
-    project_status: ProjectStatus | None = Query(default=None, alias="status"),
+    project_status: Annotated[ProjectStatus | None, Query(alias="status")] = None,
     current_user: User = Depends(get_current_user),
     session: AsyncSession = Depends(get_db),
 ) -> list[ProjectResponse]:
-    """List projects belonging to a workspace."""
     service = ProjectService(session)
     projects = await service.list_projects(workspace_id, current_user, status=project_status)
     return [ProjectResponse.model_validate(p) for p in projects]

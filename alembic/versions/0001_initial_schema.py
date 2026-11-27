@@ -23,8 +23,9 @@ def upgrade() -> None:
         sa.Column("email", sa.String(length=255), nullable=False),
         sa.Column("full_name", sa.String(length=150), nullable=False),
         sa.Column("hashed_password", sa.String(length=255), nullable=False),
-        sa.Column("role", sa.String(length=20), nullable=False, server_default="MEMBER"),
-        sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.true()),
+        sa.Column("role", sa.String(length=20), nullable=False, server_default=sa.text("'MEMBER'")),
+        sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("true")),
+        sa.Column("password_changed_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -32,7 +33,6 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.PrimaryKeyConstraint("id", name="pk_users"),
-        sa.UniqueConstraint("email", name="uq_users_email"),
     )
     op.create_index("ix_users_email", "users", ["email"], unique=True)
 
@@ -58,7 +58,7 @@ def upgrade() -> None:
         "workspace_members",
         sa.Column("workspace_id", sa.Integer(), nullable=False),
         sa.Column("user_id", sa.Integer(), nullable=False),
-        sa.Column("role", sa.String(length=20), nullable=False, server_default="VIEWER"),
+        sa.Column("role", sa.String(length=20), nullable=False, server_default=sa.text("'VIEWER'")),
         sa.ForeignKeyConstraint(
             ["workspace_id"],
             ["workspaces.id"],
@@ -73,6 +73,7 @@ def upgrade() -> None:
         ),
         sa.PrimaryKeyConstraint("workspace_id", "user_id", name="pk_workspace_members"),
     )
+    op.create_index("ix_workspace_members_user_id", "workspace_members", ["user_id"], unique=False)
 
     op.create_table(
         "projects",
@@ -80,7 +81,9 @@ def upgrade() -> None:
         sa.Column("workspace_id", sa.Integer(), nullable=False),
         sa.Column("name", sa.String(length=150), nullable=False),
         sa.Column("description", sa.Text(), nullable=True),
-        sa.Column("status", sa.String(length=20), nullable=False, server_default="ACTIVE"),
+        sa.Column(
+            "status", sa.String(length=20), nullable=False, server_default=sa.text("'ACTIVE'")
+        ),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -104,8 +107,10 @@ def upgrade() -> None:
         sa.Column("assignee_id", sa.Integer(), nullable=True),
         sa.Column("title", sa.String(length=200), nullable=False),
         sa.Column("description", sa.Text(), nullable=True),
-        sa.Column("status", sa.String(length=20), nullable=False, server_default="TODO"),
-        sa.Column("priority", sa.String(length=20), nullable=False, server_default="MEDIUM"),
+        sa.Column("status", sa.String(length=20), nullable=False, server_default=sa.text("'TODO'")),
+        sa.Column(
+            "priority", sa.String(length=20), nullable=False, server_default=sa.text("'MEDIUM'")
+        ),
         sa.Column("due_date", sa.DateTime(timezone=True), nullable=True),
         sa.Column("created_by", sa.Integer(), nullable=False),
         sa.Column(
@@ -130,7 +135,7 @@ def upgrade() -> None:
             ["created_by"],
             ["users.id"],
             name="fk_tasks_created_by_users",
-            ondelete="CASCADE",
+            ondelete="RESTRICT",
         ),
         sa.PrimaryKeyConstraint("id", name="pk_tasks"),
     )
@@ -145,7 +150,9 @@ def upgrade() -> None:
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
         sa.Column("project_id", sa.Integer(), nullable=False),
         sa.Column("name", sa.String(length=60), nullable=False),
-        sa.Column("color", sa.String(length=20), nullable=False, server_default="#6366F1"),
+        sa.Column(
+            "color", sa.String(length=20), nullable=False, server_default=sa.text("'#6366F1'")
+        ),
         sa.ForeignKeyConstraint(
             ["project_id"],
             ["projects.id"],
@@ -175,6 +182,7 @@ def upgrade() -> None:
         ),
         sa.PrimaryKeyConstraint("task_id", "label_id", name="pk_task_labels"),
     )
+    op.create_index("ix_task_labels_label_id", "task_labels", ["label_id"], unique=False)
 
     op.create_table(
         "comments",
@@ -198,7 +206,7 @@ def upgrade() -> None:
             ["author_id"],
             ["users.id"],
             name="fk_comments_author_id_users",
-            ondelete="CASCADE",
+            ondelete="RESTRICT",
         ),
         sa.PrimaryKeyConstraint("id", name="pk_comments"),
     )

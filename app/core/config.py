@@ -4,12 +4,10 @@ from typing import Literal
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-DEFAULT_INSECURE_SECRET = "dev-insecure-secret-key-change-me-before-production"
+from app.core.constants import DEFAULT_INSECURE_SECRET, MIN_SECRET_KEY_LENGTH
 
 
 class Settings(BaseSettings):
-    """Application settings with fail-fast validation across environments."""
-
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -34,6 +32,8 @@ class Settings(BaseSettings):
 
     # Redis & Caching
     redis_url: str = "redis://localhost:6379/0"
+    redis_socket_connect_timeout: float = Field(default=1.5, gt=0)
+    redis_socket_timeout: float = Field(default=2.0, gt=0)
     cache_ttl_seconds: int = Field(default=60, ge=1)
 
     # Security & JWT
@@ -52,13 +52,16 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_environment_security(self) -> "Settings":
-        """Fail fast if production/staging uses insecure defaults."""
         if not self.database_url.strip():
             raise ValueError("DATABASE_URL must not be empty")
         if self.environment in {"production", "staging"}:
-            if self.secret_key == DEFAULT_INSECURE_SECRET or len(self.secret_key) < 32:
+            if (
+                self.secret_key == DEFAULT_INSECURE_SECRET
+                or len(self.secret_key) < MIN_SECRET_KEY_LENGTH
+            ):
                 raise ValueError(
-                    "SECRET_KEY must be a strong secret (>= 32 chars) in staging/production"
+                    f"SECRET_KEY must be a strong secret (>= {MIN_SECRET_KEY_LENGTH} chars) "
+                    "in staging/production"
                 )
             if self.debug:
                 raise ValueError("DEBUG must be false in staging/production")
@@ -67,5 +70,4 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    """Return cached settings instance."""
     return Settings()

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, Enum, ForeignKey, String, Text, func
+from sqlalchemy import DateTime, Enum, ForeignKey, String, Text, func, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -15,8 +15,6 @@ if TYPE_CHECKING:
 
 
 class Project(Base):
-    """Project inside a workspace containing tasks and labels."""
-
     __tablename__ = "projects"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
@@ -30,6 +28,7 @@ class Project(Base):
     status: Mapped[ProjectStatus] = mapped_column(
         Enum(ProjectStatus, native_enum=False, length=20),
         default=ProjectStatus.ACTIVE,
+        server_default=text("'ACTIVE'"),
         nullable=False,
     )
     created_at: Mapped[datetime] = mapped_column(
@@ -42,8 +41,10 @@ class Project(Base):
     tasks: Mapped[list[Task]] = relationship(
         back_populates="project",
         cascade="all, delete-orphan",
+        passive_deletes=True,
     )
     labels: Mapped[list[Label]] = relationship(
         back_populates="project",
         cascade="all, delete-orphan",
+        passive_deletes=True,
     )

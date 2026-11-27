@@ -26,7 +26,6 @@ async def register(
     payload: RegisterRequest,
     session: AsyncSession = Depends(get_db),
 ) -> UserResponse:
-    """Create a new user account."""
     service = AuthService(session)
     user = await service.register(payload)
     return UserResponse.model_validate(user)
@@ -37,7 +36,6 @@ async def login(
     payload: LoginRequest,
     session: AsyncSession = Depends(get_db),
 ) -> TokenPairResponse:
-    """Authenticate with email and password and receive JWT tokens."""
     service = AuthService(session)
     return await service.login(payload)
 
@@ -47,7 +45,6 @@ async def refresh_token(
     payload: RefreshTokenRequest,
     session: AsyncSession = Depends(get_db),
 ) -> TokenPairResponse:
-    """Exchange a valid refresh token for a fresh access + refresh token pair."""
     service = AuthService(session)
     return await service.refresh(payload)
 
@@ -57,7 +54,6 @@ async def logout(
     payload: LogoutRequest,
     session: AsyncSession = Depends(get_db),
 ) -> MessageResponse:
-    """Revoke the provided refresh token."""
     service = AuthService(session)
     await service.logout(payload)
     return MessageResponse(message="Successfully logged out")
